@@ -10,7 +10,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 function VerifyOtpContent() {
     const searchParams = useSearchParams();
-    const router = useRouter();
     const emailParam = searchParams.get('email') || '';
     const [email, setEmail] = useState(emailParam);
     const [otp, setOtp] = useState('');
