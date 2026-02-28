@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Plus, Home, MapPin, ChevronRight, Hash } from 'lucide-react';
+import { Plus, Home, MapPin, ChevronRight } from 'lucide-react';
 
 export default function InfrastructurePage() {
     const { token, isAdmin } = useAuth();
