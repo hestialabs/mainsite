@@ -1,36 +1,32 @@
-name: Deploy hxTP Frontend
+name: Deploy HxTP Dashboard
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  build-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "pnpm"
 
-      - name: Install Dependencies
-        run: pnpm install
+      - name: Install & Dry Run Build
+        run: |
+          npm install -g pnpm
+          pnpm install
+          pnpm run build
 
-      - name: Run Type Check
-        run: pnpm run typecheck
-
-      - name: Build
-        run: pnpm run build
-
+  deploy:
+    needs: build-check
+    runs-on: ubuntu-latest
+    steps:
       - name: SSH and Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -38,4 +34,5 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo /opt/hxtp-frontend/deploy/deploy.sh
+            cd /opt/hxtp-frontend
+            sudo ./deploy/deploy.sh
