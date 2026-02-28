@@ -29,7 +29,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Overview', href: '/dashboard', icon: <Home className="w-4 h-4" /> },
+  { label: 'Overview', href: '/dashboard', icon: <Activity className="w-4 h-4" /> },
+  { label: 'Infrastructure', href: '/dashboard/infrastructure', icon: <Home className="w-4 h-4" /> },
   { label: 'Devices', href: '/dashboard/devices', icon: <Cpu className="w-4 h-4" /> },
   { label: 'Provisioning', href: '/dashboard/provisioning', icon: <QrCode className="w-4 h-4" /> },
   { label: 'Developer Keys', href: '/dashboard/keys', icon: <Key className="w-4 h-4" /> },

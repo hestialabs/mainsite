@@ -98,7 +98,8 @@ export default function ApiKeysPage() {
       if (!token) return;
       setLoading(true);
       try {
-        // fetch keys and webhooks with token
+        const res = await api.listApiKeys(token);
+        setKeys(res.data.keys);
       } catch (err) {
         toast.error('Failed to load keys');
       } finally {
@@ -108,8 +109,10 @@ export default function ApiKeysPage() {
     loadData();
   }, [token]);
 
-  const handleCreateKey = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateKey = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!token) return;
+
     const fd = new FormData(e.currentTarget);
     const name = fd.get('key_name') as string;
     const scopeStr = fd.get('scopes') as string;
@@ -120,24 +123,27 @@ export default function ApiKeysPage() {
     }
 
     const scopes = scopeStr.split(',').map((s) => s.trim()).filter(Boolean);
-    const generatedKey = `hxtp_${Array.from(crypto.getRandomValues(new Uint8Array(24)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')}`;
 
-    const newKey: ApiKey = {
-      id: `key_${Date.now()}`,
-      name,
-      prefix: generatedKey.slice(0, 12) + '...',
-      scopes,
-      created_at: new Date().toISOString(),
-      active: true,
-    };
+    try {
+      const res = await api.createApiKey(token, { name, scopes });
 
-    setKeys((prev) => [...prev, newKey]);
-    setNewKeyRevealed(generatedKey);
-    setKeyDialogOpen(false);
-    toast.success(`API key "${name}" created`);
-  }, []);
+      const newKey: ApiKey = {
+        id: res.data.key, // Using raw key temporarily for the UI list if needed, or we re-fetch
+        name: res.data.name,
+        prefix: res.data.prefix,
+        scopes,
+        created_at: new Date().toISOString(),
+        active: true,
+      };
+
+      setKeys((prev) => [newKey, ...prev]);
+      setNewKeyRevealed(res.data.key);
+      setKeyDialogOpen(false);
+      toast.success(`API key "${name}" created`);
+    } catch (err) {
+      toast.error('Failed to create API key');
+    }
+  }, [token]);
 
   const handleCreateWebhook = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -171,9 +177,15 @@ export default function ApiKeysPage() {
     toast.success(`Webhook "${name}" created`);
   }, []);
 
-  const revokeKey = (id: string) => {
-    setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, active: false } : k)));
-    toast.success('API key revoked');
+  const revokeKey = async (id: string) => {
+    if (!token) return;
+    try {
+      await api.revokeApiKey(token, id);
+      setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, active: false } : k)));
+      toast.success('API key revoked');
+    } catch (err) {
+      toast.error('Failed to revoke API key');
+    }
   };
 
   const deleteKey = (id: string) => {

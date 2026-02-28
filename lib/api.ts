@@ -101,7 +101,89 @@ export async function getCsrfToken(): Promise<ApiResponse<{ csrfToken: string }>
     return request<{ csrfToken: string }>("/auth/csrf");
 }
 
+// ── API Keys ──────────────────────────────────────────
 
+export interface ApiKey {
+    id: string;
+    name: string;
+    prefix: string;
+    scopes: string[];
+    created_at: string;
+    active: boolean;
+}
+
+export async function listApiKeys(token: string): Promise<ApiResponse<{ keys: ApiKey[] }>> {
+    return request<{ keys: ApiKey[] }>("/auth/api-keys", {
+        headers: withAuth(token),
+    });
+}
+
+export async function createApiKey(
+    token: string,
+    payload: { name: string; scopes: string[] },
+): Promise<ApiResponse<{ key: string; prefix: string; name: string }>> {
+    return request<{ key: string; prefix: string; name: string }>("/auth/api-keys", {
+        method: "POST",
+        headers: withAuth(token),
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function revokeApiKey(token: string, id: string): Promise<ApiResponse<{ status: string }>> {
+    return request<{ status: string }>(`/auth/api-keys/${id}`, {
+        method: "DELETE",
+        headers: withAuth(token),
+    });
+}// ── Homes & Rooms ────────────────────────────────────
+
+export interface Home {
+    id: string;
+    name: string;
+    timezone: string;
+    created_at: string;
+}
+
+export interface Room {
+    id: string;
+    home_id: string;
+    name: string;
+    created_at: string;
+}
+
+export async function listHomes(token: string): Promise<ApiResponse<{ homes: Home[] }>> {
+    return request<{ homes: Home[] }>("/homes", {
+        headers: withAuth(token),
+    });
+}
+
+export async function createHome(
+    token: string,
+    payload: { name: string; timezone?: string },
+): Promise<ApiResponse<{ status: string; id: string }>> {
+    return request<{ status: string; id: string }>("/homes", {
+        method: "POST",
+        headers: withAuth(token),
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function listRooms(token: string, homeId: string): Promise<ApiResponse<{ rooms: Room[] }>> {
+    return request<{ rooms: Room[] }>(`/homes/${homeId}/rooms`, {
+        headers: withAuth(token),
+    });
+}
+
+export async function createRoom(
+    token: string,
+    homeId: string,
+    payload: { name: string },
+): Promise<ApiResponse<{ status: string; id: string }>> {
+    return request<{ status: string; id: string }>(`/homes/${homeId}/rooms`, {
+        method: "POST",
+        headers: withAuth(token),
+        body: JSON.stringify(payload),
+    });
+}
 
 // ── Devices ──────────────────────────────────────────
 
@@ -112,6 +194,8 @@ export interface Device {
     active: boolean;
     revoked: boolean;
     key_version: number;
+    home_id: string;
+    room_id?: string;
     status?: string;
     last_heartbeat?: string;
     created_at: string;
@@ -126,6 +210,8 @@ export interface DeviceListResponse {
 export interface RegisterDevicePayload {
     device_type: string;
     secret: string;
+    home_id: string;
+    room_id?: string;
 }
 
 export async function listDevices(token: string): Promise<ApiResponse<DeviceListResponse>> {
@@ -137,8 +223,8 @@ export async function listDevices(token: string): Promise<ApiResponse<DeviceList
 export async function registerDevice(
     token: string,
     payload: RegisterDevicePayload,
-): Promise<ApiResponse<{ device_id: string }>> {
-    return request<{ device_id: string }>("/device/register", {
+): Promise<ApiResponse<{ status: string; id: string }>> {
+    return request<{ status: string; id: string }>("/device/register", {
         method: "POST",
         headers: withAuth(token),
         body: JSON.stringify(payload),
@@ -407,10 +493,12 @@ export interface TenantRegisterPayload {
 }
 
 export async function registerTenant(
+    token: string,
     payload: TenantRegisterPayload,
 ): Promise<ApiResponse<{ tenant_id: string; user_id: string }>> {
     return request<{ tenant_id: string; user_id: string }>("/tenant/register", {
         method: "POST",
+        headers: withAuth(token),
         body: JSON.stringify(payload),
     });
 }

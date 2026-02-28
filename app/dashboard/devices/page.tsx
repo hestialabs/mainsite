@@ -35,6 +35,8 @@ import { Plus, RefreshCw, Ban, Key, Send, History, Cpu } from 'lucide-react';
 export default function DevicesPage() {
   const { token, isAdmin, isOperator } = useAuth();
   const [devices, setDevices] = useState<api.Device[]>([]);
+  const [homes, setHomes] = useState<api.Home[]>([]);
+  const [rooms, setRooms] = useState<api.Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -43,13 +45,28 @@ export default function DevicesPage() {
   const [commandHistory, setCommandHistory] = useState<Array<Record<string, unknown>>>([]);
   const [filterType, setFilterType] = useState<string>('all');
 
+  // Registration selection state
+  const [regHomeId, setRegHomeId] = useState<string>('');
+  const [regRoomId, setRegRoomId] = useState<string>('none');
+
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await api.listDevices(token);
-      setDevices(res.data.devices);
+      const [devRes, homeRes] = await Promise.all([
+        api.listDevices(token),
+        api.listHomes(token),
+      ]);
+      setDevices(devRes.data.devices);
+      setHomes(homeRes.data.homes);
+
+      if (homeRes.data.homes.length > 0) {
+        setRegHomeId(homeRes.data.homes[0].id);
+        const roomPromises = homeRes.data.homes.map(h => api.listRooms(token, h.id));
+        const roomResults = await Promise.all(roomPromises);
+        setRooms(roomResults.flatMap(r => r.data.rooms));
+      }
     } catch {
-      toast.error('Failed to load devices');
+      toast.error('Failed to load infrastructure data');
     } finally {
       setLoading(false);
     }
@@ -64,21 +81,25 @@ export default function DevicesPage() {
     const deviceType = fd.get('device_type') as string;
     const secret = fd.get('secret') as string;
 
-    if (!deviceType || !secret) {
-      toast.error('All fields are required');
+    if (!deviceType || !secret || !regHomeId) {
+      toast.error('Device type, secret, and home are required');
       return;
     }
 
     try {
-      const res = await api.registerDevice(token, { device_type: deviceType, secret });
-      toast.success(`Device registered: ${res.data.device_id.slice(0, 12)}...`);
+      const res = await api.registerDevice(token, {
+        device_type: deviceType,
+        secret,
+        home_id: regHomeId,
+        room_id: regRoomId === 'none' ? undefined : regRoomId
+      });
+      toast.success(`Device registered: ${res.data.id.slice(0, 12)}...`);
       setRegisterOpen(false);
       load();
     } catch (err) {
       toast.error(err instanceof api.ApiError ? err.body.error : 'Registration failed');
     }
   };
-
   const handleRevoke = async (deviceId: string) => {
     if (!token) return;
     try {
@@ -196,13 +217,39 @@ export default function DevicesPage() {
                 </DialogHeader>
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div className="space-y-2">
+                    <Label className="text-[10px] uppercase tracking-widest font-bold">Target Home</Label>
+                    <Select value={regHomeId} onValueChange={(v) => { setRegHomeId(v); setRegRoomId('none'); }}>
+                      <SelectTrigger className="font-mono text-sm">
+                        <SelectValue placeholder="Select Home" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {homes.map(h => (
+                          <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase tracking-widest font-bold">Target Room (Optional)</Label>
+                    <Select value={regRoomId} onValueChange={setRegRoomId}>
+                      <SelectTrigger className="font-mono text-sm">
+                        <SelectValue placeholder="Select Room" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned / Main</SelectItem>
+                        {rooms.filter(r => r.home_id === regHomeId).map(r => (
+                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
                     <Label className="text-[10px] uppercase tracking-widest font-bold">Device Type</Label>
                     <Input name="device_type" placeholder="helix_retrofit_node" required className="font-mono text-sm" />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] uppercase tracking-widest font-bold">Device Secret</Label>
                     <Input name="secret" type="password" required minLength={32} className="font-mono text-sm" />
-                    <p className="text-[10px] text-muted-foreground">Minimum 32 characters. Generated on the device during manufacturing.</p>
                   </div>
                   <DialogFooter>
                     <Button type="submit" className="text-[10px] uppercase tracking-widest">Register</Button>
@@ -220,93 +267,105 @@ export default function DevicesPage() {
           <thead>
             <tr className="border-b border-border bg-card/50">
               <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Device ID</th>
+              <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Location</th>
               <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Type</th>
               <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Firmware</th>
-              <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Key Ver</th>
               <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Status</th>
-              <th className="text-left p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Updated</th>
               <th className="text-right p-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((device) => (
-              <tr key={device.id} className="border-b border-border/50 hover:bg-card/30">
-                <td className="p-3 font-mono text-xs">{device.id.slice(0, 16)}...</td>
-                <td className="p-3 text-xs flex items-center gap-2"><Cpu className="w-3 h-3 text-muted-foreground" /> {device.device_type}</td>
-                <td className="p-3 font-mono text-xs">{device.firmware}</td>
-                <td className="p-3 font-mono text-xs">v{device.key_version}</td>
-                <td className="p-3">
-                  {device.revoked ? (
-                    <Badge variant="destructive" className="text-[8px]">REVOKED</Badge>
-                  ) : device.active ? (
-                    <Badge variant="success" className="text-[8px]">ACTIVE</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[8px]">INACTIVE</Badge>
-                  )}
-                </td>
-                <td className="p-3 text-xs text-muted-foreground">
-                  {device.updated_at ? new Date(device.updated_at).toLocaleDateString() : '—'}
-                </td>
-                <td className="p-3 text-right">
-                  <div className="flex justify-end gap-1">
-                    {isOperator && !device.revoked && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Send Command"
-                        onClick={() => { setSelectedDevice(device); setCommandOpen(true); }}
-                      >
-                        <Send className="w-3 h-3" />
-                      </Button>
+            {filtered.map((device) => {
+              const home = homes.find(h => h.id === device.home_id);
+              const room = rooms.find(r => r.id === device.room_id);
+
+              return (
+                <tr key={device.id} className="border-b border-border/50 hover:bg-card/30">
+                  <td className="p-3 font-mono text-xs">
+                    <div className="font-bold">{device.id.slice(0, 16)}...</div>
+                    <div className="text-[9px] text-muted-foreground uppercase">Key v{device.key_version}</div>
+                  </td>
+                  <td className="p-3">
+                    <div className="text-xs font-bold">{home?.name || 'Unknown Home'}</div>
+                    <div className="text-[10px] text-muted-foreground">{room?.name || 'Unassigned'}</div>
+                  </td>
+                  <td className="p-3 text-xs flex items-center gap-2 h-full py-5">
+                    <Cpu className="w-3 h-3 text-muted-foreground" /> {device.device_type}
+                  </td>
+                  <td className="p-3 font-mono text-xs">{device.firmware}</td>
+                  <td className="p-3">
+                    {device.revoked ? (
+                      <Badge variant="destructive" className="text-[8px]">REVOKED</Badge>
+                    ) : device.active ? (
+                      <Badge variant="success" className="text-[8px]">ACTIVE</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[8px]">INACTIVE</Badge>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Command History"
-                      onClick={() => openHistory(device)}
-                    >
-                      <History className="w-3 h-3" />
-                    </Button>
-                    {isAdmin && !device.revoked && (
-                      <>
+                  </td>
+                  <td className="p-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      {isOperator && !device.revoked && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Rotate Secret"
-                          onClick={() => handleRotateKey(device.id)}
+                          className="h-7 w-7"
+                          title="Send Command"
+                          onClick={() => { setSelectedDevice(device); setCommandOpen(true); }}
                         >
-                          <Key className="w-3 h-3" />
+                          <Send className="w-3 h-3" />
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title="Revoke">
-                              <Ban className="w-3 h-3 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="uppercase tracking-tighter">Revoke Device?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently blacklist device {device.id.slice(0, 12)}. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleRevoke(device.id)}>
-                                Revoke
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Command History"
+                        onClick={() => openHistory(device)}
+                      >
+                        <History className="w-3 h-3" />
+                      </Button>
+                      {isAdmin && !device.revoked && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Rotate Secret"
+                            onClick={() => handleRotateKey(device.id)}
+                          >
+                            <Key className="w-3 h-3" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Revoke">
+                                <Ban className="w-3 h-3 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="uppercase tracking-tighter">Revoke Device?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently blacklist device {device.id.slice(0, 12)}. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleRevoke(device.id)}>
+                                  Revoke
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground text-xs">
+                <td colSpan={6} className="p-8 text-center text-muted-foreground text-xs">
                   No devices found.
                 </td>
               </tr>

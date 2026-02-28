@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const { login, user, loading: authLoading } = useAuth();
+  const { signIn, user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +35,7 @@ export default function LoginPage() {
     }
 
     try {
-      await login(email, password);
+      await signIn(email, password);
       router.push('/dashboard');
     } catch {
       toast.error('Authentication failed');

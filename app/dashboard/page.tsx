@@ -11,6 +11,8 @@ import { Cpu, Activity, Shield, Wifi } from 'lucide-react';
 export default function DashboardOverview() {
   const { token } = useAuth();
   const [devices, setDevices] = useState<api.Device[]>([]);
+  const [homes, setHomes] = useState<api.Home[]>([]);
+  const [rooms, setRooms] = useState<api.Room[]>([]);
   const [health, setHealth] = useState<api.HealthResponse | null>(null);
   const [systemStatus, setSystemStatus] = useState<{ version: string; protocol: string; status: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,12 +20,24 @@ export default function DashboardOverview() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [devRes, healthRes, statusRes] = await Promise.all([
+      const [devRes, homeRes, healthRes, statusRes] = await Promise.all([
         api.listDevices(token),
+        api.listHomes(token),
         api.getHealth().catch(() => null),
         api.getSystemStatus().catch(() => null),
       ]);
+
       setDevices(devRes.data.devices);
+      setHomes(homeRes.data.homes);
+
+      // Load rooms for all homes
+      if (homeRes.data.homes.length > 0) {
+        const roomPromises = homeRes.data.homes.map(h => api.listRooms(token, h.id));
+        const roomResults = await Promise.all(roomPromises);
+        const allRooms = roomResults.flatMap(r => r.data.rooms);
+        setRooms(allRooms);
+      }
+
       if (healthRes) setHealth(healthRes.data);
       if (statusRes) setSystemStatus(statusRes.data);
     } catch {
@@ -68,7 +82,37 @@ export default function DashboardOverview() {
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-              Total Devices
+              Homes
+            </CardTitle>
+            <Shield className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold font-mono">{homes.length}</div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Registered environments
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
+              Rooms
+            </CardTitle>
+            <Activity className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold font-mono">{rooms.length}</div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Organizational units
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
+              Devices
             </CardTitle>
             <Cpu className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
@@ -83,9 +127,9 @@ export default function DashboardOverview() {
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-              System Health
+              Connectivity
             </CardTitle>
-            <Activity className="w-4 h-4 text-muted-foreground" />
+            <Wifi className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold font-mono">
@@ -97,49 +141,8 @@ export default function DashboardOverview() {
                 <Badge variant="outline">UNKNOWN</Badge>
               )}
             </div>
-            {health && (
-              <div className="flex gap-2 mt-2">
-                {health.checks.database && <Badge variant="success" className="text-[8px]">DB</Badge>}
-                {health.checks.redis && <Badge variant="success" className="text-[8px]">REDIS</Badge>}
-                {health.checks.mqtt && <Badge variant="success" className="text-[8px]">MQTT</Badge>}
-                {health.checks.protocol_ready && <Badge variant="success" className="text-[8px]">PROTO</Badge>}
-                {!health.checks.database && <Badge variant="destructive" className="text-[8px]">DB</Badge>}
-                {!health.checks.redis && <Badge variant="destructive" className="text-[8px]">REDIS</Badge>}
-                {!health.checks.mqtt && <Badge variant="destructive" className="text-[8px]">MQTT</Badge>}
-                {!health.checks.protocol_ready && <Badge variant="destructive" className="text-[8px]">PROTO</Badge>}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-              Protocol
-            </CardTitle>
-            <Shield className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold font-mono">
-              {systemStatus?.version ?? '—'}
-            </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              {systemStatus?.protocol ?? ''}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-              Connectivity
-            </CardTitle>
-            <Wifi className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold font-mono">{onlineCount}</div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Active connections
+              System health status
             </p>
           </CardContent>
         </Card>
