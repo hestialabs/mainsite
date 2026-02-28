@@ -209,7 +209,17 @@ export interface DeviceListResponse {
 
 export interface RegisterDevicePayload {
     device_type: string;
-    secret: string;
+    home_id: string;
+    room_id?: string;
+}
+
+export interface RegisterDeviceResponse {
+    status: string;
+    device_id: string;
+    tenant_id: string;
+    api_base_url: string;
+    device_secret: string;
+    initial_sequence: number;
     home_id: string;
     room_id?: string;
 }
@@ -223,8 +233,8 @@ export async function listDevices(token: string): Promise<ApiResponse<DeviceList
 export async function registerDevice(
     token: string,
     payload: RegisterDevicePayload,
-): Promise<ApiResponse<{ status: string; id: string }>> {
-    return request<{ status: string; id: string }>("/device/register", {
+): Promise<ApiResponse<RegisterDeviceResponse>> {
+    return request<RegisterDeviceResponse>("/device/register", {
         method: "POST",
         headers: withAuth(token),
         body: JSON.stringify(payload),
