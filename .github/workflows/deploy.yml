@@ -1,39 +1,59 @@
-name: Deploy HxTP Dashboard
+name: Deploy HxTP Dashboard (Image-Only)
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/mainsite
+
 jobs:
-  build-check:
+  build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          node-version: "20"
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install & Dry Run Build
-        run: |
-          npm install -g pnpm
-          pnpm install
-          pnpm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_API_BASE_URL: /api
-          NEXT_PUBLIC_WS_URL: ws://localhost/ws
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=beta
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=,format=short
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=/api
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_WS_URL=/ws
 
   deploy:
-    needs: build-check
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-
-      - name: SSH and Deploy
+      - name: Deploy to VM
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -41,5 +61,44 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
-            cd /home/hestialabs/frontend
-            sudo ./deploy/deploy.sh
+            set -e
+
+            REGISTRY="ghcr.io"
+            IMAGE="${REGISTRY}/${{ github.repository_owner }}/mainsite"
+
+            # Tag current as previous for rollback
+            docker tag mainsite:latest mainsite:previous 2>/dev/null || true
+
+            # Pull new beta
+            docker pull "${IMAGE}:beta"
+            docker tag "${IMAGE}:beta" mainsite:beta
+
+            # Swap container
+            docker stop mainsite || true
+            docker rm mainsite || true
+            docker run -d \
+                --name mainsite \
+                --network host \
+                --restart unless-stopped \
+                mainsite:beta
+
+            # Health check
+            echo "Waiting for health check..."
+            sleep 15
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3000 || echo "000")
+
+            if [ "$STATUS" = "200" ]; then
+                echo "✅ Frontend deployment HEALTHY"
+                docker tag mainsite:beta mainsite:latest
+                docker image prune -f
+            else
+                echo "❌ Frontend deployment FAILED — rolling back"
+                docker stop mainsite || true
+                docker rm mainsite || true
+                docker run -d \
+                    --name mainsite \
+                    --network host \
+                    --restart unless-stopped \
+                    mainsite:previous
+                exit 1
+            fi
