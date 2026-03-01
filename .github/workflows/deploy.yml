@@ -67,16 +67,16 @@ jobs:
             IMAGE="${REGISTRY}/${{ github.repository_owner }}/mainsite"
 
             # Tag current as previous for rollback
-            docker tag mainsite:latest mainsite:previous 2>/dev/null || true
+            sudo docker tag mainsite:latest mainsite:previous 2>/dev/null || true
 
             # Pull new beta
-            docker pull "${IMAGE}:beta"
-            docker tag "${IMAGE}:beta" mainsite:beta
+            sudo docker pull "${IMAGE}:beta"
+            sudo docker tag "${IMAGE}:beta" mainsite:beta
 
             # Swap container
-            docker stop mainsite || true
-            docker rm mainsite || true
-            docker run -d \
+            sudo docker stop mainsite || true
+            sudo docker rm mainsite || true
+            sudo docker run -d \
                 --name mainsite \
                 --network host \
                 --restart unless-stopped \
@@ -88,14 +88,14 @@ jobs:
             STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3000 || echo "000")
 
             if [ "$STATUS" = "200" ]; then
-                echo "✅ Frontend deployment HEALTHY"
-                docker tag mainsite:beta mainsite:latest
-                docker image prune -f
+                echo "[OK] Frontend deployment HEALTHY"
+                sudo docker tag mainsite:beta mainsite:latest
+                sudo docker image prune -f
             else
-                echo "❌ Frontend deployment FAILED — rolling back"
-                docker stop mainsite || true
-                docker rm mainsite || true
-                docker run -d \
+                echo "[FAIL] Frontend deployment FAILED -- rolling back"
+                sudo docker stop mainsite || true
+                sudo docker rm mainsite || true
+                sudo docker run -d \
                     --name mainsite \
                     --network host \
                     --restart unless-stopped \
