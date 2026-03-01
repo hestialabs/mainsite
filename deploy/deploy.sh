@@ -2,7 +2,7 @@
 set -e
 
 # HXTP Frontend Deployment Script (systemd-based)
-REPO_DIR="/opt/hxtp-frontend"
+REPO_DIR="/home/hestialabs/frontend"
 
 echo ">>> Starting HXTP Frontend Deployment at $(date)"
 

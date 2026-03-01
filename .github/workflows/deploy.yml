@@ -40,5 +40,5 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
-            cd /opt/hxtp-frontend
+            cd /home/hestialabs/frontend
             sudo ./deploy/deploy.sh
